@@ -1,0 +1,114 @@
+// 用于声明具有动态创建功能的基类
+#define DECLARE_DYNCRT_BASE(base) \
+    public: \
+        typedef base* (*ClassGen)(); \
+        static void Register(const char* cmd, const char* className, ClassGen classGen) \
+        { \
+            CClassSet::GetInstance()->insert(cmd,className,classGen); \
+        } \
+        static base* Create(const std::string& strCmd) \
+        { \
+            return CClassSet::GetInstance()->Create(strCmd); \
+        } \
+    private: \
+        class CClassSet \
+        { \
+        private: \
+            CClassSet() {}\
+        public: \
+            virtual ~CClassSet() \
+            { \
+                for(map<std::string, pair<const char *,ClassGen> >::iterator it = classSet.begin(); it != classSet.end();) \
+                { \
+                    classSet.erase(it++); \
+                } \
+            } \
+            static CClassSet *GetInstance() \
+            { \
+                if (NULL == instance) \
+                { \
+                    instance = new CClassSet(); \
+                } \
+                return instance; \
+            } \
+            void  insert(const char* cmd, const char* className, ClassGen classGen) \
+            { \
+                pair<const char *,ClassGen> tmp(className,classGen);\
+                classSet.insert(map<std::string, pair<const char *,ClassGen> >::value_type(cmd, tmp)); \
+            } \
+            base* Create(const std::string& strCmd)  \
+            { \
+                map<std::string, pair<const char *,ClassGen> >::iterator iter; \
+                if((iter = classSet.find(strCmd)) != classSet.end()) \
+                { \
+                    return ((*iter).second.second)(); \
+                } \
+                return NULL; \
+            } \
+        private: \
+             static CClassSet *instance; \
+             map<std::string, pair<const char *,ClassGen> > classSet; \
+        };
+
+
+// 用于实现基类 
+#define IMPLEMENT_DYNCRT_BASE(base) \
+    base::CClassSet *base::CClassSet::instance=NULL;
+
+// 用于声明一个能够被动态创建的类 
+#define DECLARE_DYNCRT_CLASS(cmd,derived, base) \
+    public: \
+        struct derived##Register \
+        { \
+            derived##Register() \
+            { \
+                static bool bRegistered = false; \
+                if(!bRegistered) \
+                { \
+                    base::Register(cmd,#derived, Create); \
+                    bRegistered = true; \
+                } \
+            } \
+        }; \
+        static base* Create() \
+        { \
+            return new derived; \
+        }
+
+// 用于实现一个能够被动态创建的类  
+#define IMPLEMENT_DYNCRT_CLASS(derived) \
+    static derived::derived##Register derived##_for_registering; 
+
+
+class CReqHandle
+{
+    DECLARE_DYNCRT_BASE(CReqHandle);                  // 声明动态基类 
+    //DECLARE_DYNCRT_CLASS("cmdcommon",CReqHandle, CReqHandle); // 基类自己也可以动态创建
+
+public:
+    CReqHandle()
+    {
+        m_StatusCode       = httpOK;
+    };
+
+    virtual ~CReqHandle(){};
+
+    virtual HTTPStatusCode   GetRespStatusCode(){ return m_StatusCode;}
+	virtual std::string 	 GetLocation(){return m_strLocation;}
+    virtual std::string 	 GeContentType(){ return m_strContentType; }
+    virtual ErrCode          ParseReqPara(const std::string& strReqData) {return ERRCODE_SUCCESS;}
+    virtual ErrCode          DoWork(){return ERRCODE_SUCCESS;}
+    virtual std::string      MakeRespData(){ return "";}
+	virtual void			 RespFailHandle(){}
+    virtual void             SetHttpReqProc(const HttpReqProtocol& sHttpReqProtocol){m_sHttpReqProtocol = sHttpReqProtocol;}
+    virtual HttpReqProtocol& GetHttpReqProc(){return m_sHttpReqProtocol;}
+
+protected:
+
+    HTTPStatusCode     m_StatusCode;
+    HttpReqProtocol    m_sHttpReqProtocol;
+	std::string 	   m_strLocation;
+    std::string        m_strContentType;
+};
+
+#endif //__REQUEST_HANDLE_H__
